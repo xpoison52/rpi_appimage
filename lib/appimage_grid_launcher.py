@@ -103,18 +103,16 @@ _LAUNCHER_CSS = b"""
 """
 
 
-def _apply_launcher_css() -> None:
-    screen = Gdk.Screen.get_default()
-    if screen is None:
-        return
+def _apply_launcher_css_to_widget(widget: Gtk.Widget) -> None:
+    """Apply launcher CSS to a root widget (works when Gdk.Screen is unset on Wayland)."""
     provider = Gtk.CssProvider()
     try:
         provider.load_from_data(_LAUNCHER_CSS)
     except Exception as e:
         print("appimage_grid_launcher: CSS not applied:", e, file=sys.stderr)
         return
-    Gtk.StyleContext.add_provider_for_screen(
-        screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    widget.get_style_context().add_provider(
+        provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
     )
 
 
@@ -227,6 +225,7 @@ class AppImageGridLauncher(Gtk.ApplicationWindow):
         shell = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         shell.set_name("launcher-shell")
         shell.get_style_context().add_class("app-grid-launcher")
+        _apply_launcher_css_to_widget(shell)
         shell.set_hexpand(True)
         shell.set_vexpand(True)
 
@@ -418,7 +417,6 @@ class GridLauncherApp(Gtk.Application):
             if settings is not None:
                 settings.set_property("gtk-application-prefer-dark-theme", True)
                 settings.set_property("gtk-theme-name", "Adwaita")
-            _apply_launcher_css()
             entries = _discover_apps(self.appimages_dir, self.applications_dir)
             self._win = AppImageGridLauncher(self, entries)
             self._win.connect("destroy", self._on_window_destroy)
