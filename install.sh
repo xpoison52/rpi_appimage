@@ -1,7 +1,7 @@
 #!/bin/sh
 # Install launcher and Cage Wayland session files under PREFIX (default /usr/local).
 set -eu
-ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 PREFIX="${PREFIX:-/usr/local}"
 
 echo "Installing rpi-appimage-launcher to $PREFIX (sudo required)..."
