@@ -1,0 +1,54 @@
+Raspberry Pi 4 — AppImage grid kiosk
+====================================
+
+Contents
+--------
+- lib/appimage_grid_launcher.py — GTK3 grid (~/AppImages + .desktop files)
+- bin/rpi-appimage-cage-session — Wayland: Cage + launcher
+- bin/rpi-appimage-openbox-session — X11 fallback: Openbox + launcher
+- share/wayland-sessions/cage-appimage-grid.desktop — pick this session in lightdm
+- share/xsessions/openbox-appimage-grid.desktop — X11 session entry
+- share/lightdm/lightdm.conf.d/90-appimage-kiosk.conf.example — autologin snippet
+- scripts/setup-user-apps.sh — creates ~/AppImages and sample .desktop
+
+Install on the Pi
+-----------------
+1. Copy this `rpi-appimage-launcher` folder to the Pi (e.g. under your home directory).
+
+2. Install packages (Raspberry Pi OS Bookworm, 64-bit):
+   sudo apt update
+   sudo apt install -y cage python3-gi gir1.2-gtk-3.0 dbus-x11
+
+   Optional X11 fallback:
+   sudo apt install -y openbox
+
+3. Run the installer (does not need the execute bit; use sh):
+   sh rpi-appimage-launcher/install.sh
+
+4. Per-user directories and sample desktop entry:
+   sh rpi-appimage-launcher/scripts/setup-user-apps.sh
+
+5. Put aarch64 AppImages in ~/AppImages and mark executable:
+   chmod +x ~/AppImages/*.AppImage
+
+6. Autologin into the grid (lightdm):
+   sudo cp rpi-appimage-launcher/share/lightdm/lightdm.conf.d/90-appimage-kiosk.conf.example \
+     /etc/lightdm/lightdm.conf.d/90-appimage-kiosk.conf
+   Edit the file: set autologin-user to your username. Keep autologin-session=cage-appimage-grid
+   unless you use the Openbox session (openbox-appimage-grid).
+   sudo systemctl restart lightdm
+
+Launcher usage
+--------------
+- Refresh: F5 or Refresh button
+- Exit launcher (maintenance): Ctrl+Shift+Q
+- Window close is ignored in kiosk mode; rely on the key chord above
+
+Environment
+-----------
+- RPI_APPIMAGE_LAUNCHER — override path to appimage_grid_launcher.py (for development)
+
+Cage and multiple windows
+-------------------------
+Launched AppImages appear as additional windows; use Cage’s window switching (see cage(1),
+often Alt+Escape / Alt+Tab depending on build) to return to the grid.

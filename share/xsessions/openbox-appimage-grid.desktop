@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=AppImage Grid (Openbox)
+Comment=X11: Openbox + AppImage grid launcher
+Exec=/usr/local/bin/rpi-appimage-openbox-session
+TryExec=/usr/bin/openbox-session
+Type=Application

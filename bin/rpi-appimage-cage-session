@@ -1,0 +1,24 @@
+#!/bin/sh
+# Wayland kiosk session: run Cage with the AppImage grid launcher.
+# Installed to /usr/local/bin by install.sh (requires cage, python3-gi, gir1.2-gtk-3.0).
+set -eu
+
+LAUNCHER="${RPI_APPIMAGE_LAUNCHER:-/usr/local/lib/rpi-appimage-launcher/appimage_grid_launcher.py}"
+export XDG_SESSION_TYPE=wayland
+export XDG_CURRENT_DESKTOP=CageAppImage
+
+if ! command -v cage >/dev/null 2>&1; then
+  echo "cage not found. Install: sudo apt install cage" >&2
+  exit 1
+fi
+
+if [ ! -f "$LAUNCHER" ]; then
+  echo "Launcher not found: $LAUNCHER" >&2
+  exit 1
+fi
+
+if command -v dbus-run-session >/dev/null 2>&1 && [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+  exec dbus-run-session cage -- /usr/bin/python3 "$LAUNCHER" ${1+"$@"}
+else
+  exec cage -- /usr/bin/python3 "$LAUNCHER" ${1+"$@"}
+fi

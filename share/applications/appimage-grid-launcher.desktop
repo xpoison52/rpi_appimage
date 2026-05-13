@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=AppImage Grid Launcher
+Comment=GTK grid for ~/AppImages (run inside a graphical session)
+Exec=/usr/bin/python3 /usr/local/lib/rpi-appimage-launcher/appimage_grid_launcher.py
+Icon=application-x-executable
+Terminal=false
+Categories=Utility;

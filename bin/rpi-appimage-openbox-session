@@ -1,0 +1,13 @@
+#!/bin/sh
+# Optional X11 fallback: Openbox session with grid launcher started after WM loads.
+set -eu
+LAUNCHER="${RPI_APPIMAGE_LAUNCHER:-/usr/local/lib/rpi-appimage-launcher/appimage_grid_launcher.py}"
+export XDG_SESSION_TYPE=x11
+
+if ! command -v openbox-session >/dev/null 2>&1; then
+  echo "openbox-session not found. Install: sudo apt install openbox" >&2
+  exit 1
+fi
+
+( sleep 0.5 && exec /usr/bin/python3 "$LAUNCHER" "$@" ) &
+exec openbox-session

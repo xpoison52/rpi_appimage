@@ -1,0 +1,12 @@
+# LightDM: boot straight into Cage + AppImage grid
+# Copy this file to: /etc/lightdm/lightdm.conf.d/90-appimage-kiosk.conf
+# Then: sudo systemctl restart lightdm   (will log you out)
+
+[Seat:*]
+# Replace 'pi' with your kiosk username
+autologin-user=pi
+# Session file basename (without .desktop) from:
+#   /usr/share/wayland-sessions/cage-appimage-grid.desktop  -> cage-appimage-grid
+# or for X11 Openbox fallback:
+#   /usr/share/xsessions/openbox-appimage-grid.desktop      -> openbox-appimage-grid
+autologin-session=cage-appimage-grid

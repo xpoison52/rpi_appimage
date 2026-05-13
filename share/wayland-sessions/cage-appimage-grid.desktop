@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=AppImage Grid (Cage)
+Comment=Wayland kiosk: Cage + AppImage grid launcher
+Exec=/usr/local/bin/rpi-appimage-cage-session
+TryExec=/usr/bin/cage
+Type=Application
+DesktopNames=CageAppImage
