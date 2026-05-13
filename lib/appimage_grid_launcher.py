@@ -216,12 +216,8 @@ class AppImageGridLauncher(Gtk.ApplicationWindow):
         super().__init__(application=app, title="")
         self._launcher = app
         self.cols = max(1, app.cols)
-        scr = Gdk.Screen.get_default()
-        if scr is not None:
-            g = scr.get_monitor_geometry(0)
-            self.set_default_size(g.width, g.height)
-        else:
-            self.set_default_size(1024, 600)
+        # Under Wayland (Cage), Gdk.Screen geometry in __init__ is often wrong → black window.
+        self.set_default_size(1280, 720)
         self.set_decorated(False)
         self.set_title("")
         self.get_style_context().add_class("app-grid-launcher")
@@ -310,6 +306,25 @@ class AppImageGridLauncher(Gtk.ApplicationWindow):
         self._fill_grid(entries)
         self.connect("key-press-event", self._on_key_press)
         self.connect("delete-event", lambda *_a: True)
+        self._map_h = self.connect("map", self._on_first_map)
+
+    def _on_first_map(self, *_args: object) -> None:
+        display = Gdk.Display.get_default()
+        mon = None
+        win = self.get_window()
+        if display is not None and win is not None:
+            mon = display.get_monitor_at_window(win)
+        if mon is None and display is not None:
+            mon = display.get_primary_monitor()
+        if mon is None and display is not None:
+            mon = display.get_monitor(0)
+        if mon is not None:
+            g = mon.get_geometry()
+            if g.width >= 320 and g.height >= 240:
+                self.resize(g.width, g.height)
+        if self._map_h is not None:
+            self.disconnect(self._map_h)
+            self._map_h = None
 
     def _clear_flow(self) -> None:
         for child in self.flow.get_children():
