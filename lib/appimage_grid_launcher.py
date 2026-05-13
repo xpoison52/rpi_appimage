@@ -24,7 +24,7 @@ window.app-grid-launcher {
   background-color: #0c0e12;
 }
 .app-grid-launcher .header-area {
-  background: linear-gradient(180deg, #141820 0%, #0c0e12 100%);
+  background-color: #141820;
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 .app-grid-launcher .footer-area {
@@ -67,25 +67,23 @@ window.app-grid-launcher {
 .app-grid-launcher button.refresh-btn:active {
   background: rgba(255,255,255,0.05);
 }
-.app-grid-launcher flowbox > flowboxchild > button.app-tile {
+.app-grid-launcher button.app-tile {
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 16px;
   padding: 18px 14px 14px 14px;
   outline: none;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
   min-width: 132px;
   min-height: 148px;
 }
-.app-grid-launcher flowbox > flowboxchild > button.app-tile:hover {
+.app-grid-launcher button.app-tile:hover {
   background: rgba(255,255,255,0.09);
   border-color: rgba(120,160,255,0.35);
-  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
 }
-.app-grid-launcher flowbox > flowboxchild > button.app-tile:active {
+.app-grid-launcher button.app-tile:active {
   background: rgba(255,255,255,0.06);
 }
-.app-grid-launcher flowbox > flowboxchild > button.app-tile label {
+.app-grid-launcher button.app-tile label {
   color: #e8ecf4;
   font-size: 13px;
   font-weight: 500;
@@ -107,7 +105,11 @@ def _apply_launcher_css() -> None:
     if screen is None:
         return
     provider = Gtk.CssProvider()
-    provider.load_from_data(_LAUNCHER_CSS)
+    try:
+        provider.load_from_data(_LAUNCHER_CSS)
+    except Exception as e:
+        print("appimage_grid_launcher: CSS not applied:", e, file=sys.stderr)
+        return
     Gtk.StyleContext.add_provider_for_screen(
         screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
     )
@@ -214,7 +216,12 @@ class AppImageGridLauncher(Gtk.ApplicationWindow):
         super().__init__(application=app, title="")
         self._launcher = app
         self.cols = max(1, app.cols)
-        self.set_default_size(1024, 600)
+        scr = Gdk.Screen.get_default()
+        if scr is not None:
+            g = scr.get_monitor_geometry(0)
+            self.set_default_size(g.width, g.height)
+        else:
+            self.set_default_size(1024, 600)
         self.set_decorated(False)
         self.set_title("")
         self.get_style_context().add_class("app-grid-launcher")
@@ -303,11 +310,6 @@ class AppImageGridLauncher(Gtk.ApplicationWindow):
         self._fill_grid(entries)
         self.connect("key-press-event", self._on_key_press)
         self.connect("delete-event", lambda *_a: True)
-        self._map_handler = self.connect("map", self._on_first_map)
-
-    def _on_first_map(self, *_args: object) -> None:
-        self.fullscreen()
-        self.disconnect(self._map_handler)
 
     def _clear_flow(self) -> None:
         for child in self.flow.get_children():
