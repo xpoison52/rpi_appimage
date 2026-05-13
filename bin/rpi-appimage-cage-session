@@ -7,6 +7,14 @@ LAUNCHER="${RPI_APPIMAGE_LAUNCHER:-/usr/local/lib/rpi-appimage-launcher/appimage
 export XDG_SESSION_TYPE=wayland
 export XDG_CURRENT_DESKTOP=CageAppImage
 
+# Minimal Wayland sessions: AT-SPI D-Bus can leave GTK with a blank stage on some Pis.
+export NO_AT_BRIDGE=1
+unset GTK_MODULES 2>/dev/null || true
+# If the UI is still a black screen, try once: export LIBGL_ALWAYS_SOFTWARE=1
+if [ "${RPI_APPIMAGE_SOFTWARE_GL:-}" = 1 ]; then
+  export LIBGL_ALWAYS_SOFTWARE=1
+fi
+
 if ! command -v cage >/dev/null 2>&1; then
   echo "cage not found. Install: sudo apt install cage" >&2
   exit 1

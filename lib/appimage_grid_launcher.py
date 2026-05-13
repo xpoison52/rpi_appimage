@@ -14,13 +14,16 @@ import sys
 from pathlib import Path
 from typing import Iterable
 
+# Before GTK: AT-SPI over D-Bus breaks some minimal Wayland sessions (black window).
+os.environ.setdefault("NO_AT_BRIDGE", "1")
+
 import gi
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, Gio, Gtk, Pango  # noqa: E402
 
 _LAUNCHER_CSS = b"""
-window.app-grid-launcher {
+#launcher-shell.app-grid-launcher {
   background-color: #0c0e12;
 }
 .app-grid-launcher .header-area {
@@ -89,13 +92,13 @@ window.app-grid-launcher {
   font-weight: 500;
 }
 .app-grid-launcher scrolledwindow {
-  background-color: transparent;
+  background-color: #0c0e12;
 }
 .app-grid-launcher viewport {
-  background-color: transparent;
+  background-color: #0c0e12;
 }
 .app-grid-launcher flowbox {
-  background-color: transparent;
+  background-color: #0c0e12;
 }
 """
 
@@ -220,9 +223,16 @@ class AppImageGridLauncher(Gtk.ApplicationWindow):
         self.set_default_size(1280, 720)
         self.set_decorated(False)
         self.set_title("")
-        self.get_style_context().add_class("app-grid-launcher")
+
+        shell = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        shell.set_name("launcher-shell")
+        shell.get_style_context().add_class("app-grid-launcher")
+        shell.set_hexpand(True)
+        shell.set_vexpand(True)
 
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        root.set_hexpand(True)
+        root.set_vexpand(True)
         root.set_name("launcher-root")
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
@@ -276,7 +286,7 @@ class AppImageGridLauncher(Gtk.ApplicationWindow):
         self.flow = Gtk.FlowBox()
         self.flow.set_selection_mode(Gtk.SelectionMode.NONE)
         self.flow.set_activate_on_single_click(True)
-        self.flow.set_homogeneous(True)
+        self.flow.set_homogeneous(False)
         self.flow.set_max_children_per_line(self.cols)
         self.flow.set_min_children_per_line(1)
         self.flow.set_row_spacing(16)
@@ -302,7 +312,8 @@ class AppImageGridLauncher(Gtk.ApplicationWindow):
         root.pack_start(self._stack, True, True, 0)
         root.pack_start(footer, False, False, 0)
 
-        self.add(root)
+        shell.pack_start(root, True, True, 0)
+        self.add(shell)
         self._fill_grid(entries)
         self.connect("key-press-event", self._on_key_press)
         self.connect("delete-event", lambda *_a: True)
@@ -322,6 +333,7 @@ class AppImageGridLauncher(Gtk.ApplicationWindow):
             g = mon.get_geometry()
             if g.width >= 320 and g.height >= 240:
                 self.resize(g.width, g.height)
+        self.queue_draw()
         if self._map_h is not None:
             self.disconnect(self._map_h)
             self._map_h = None
@@ -405,6 +417,7 @@ class GridLauncherApp(Gtk.Application):
             settings = Gtk.Settings.get_default()
             if settings is not None:
                 settings.set_property("gtk-application-prefer-dark-theme", True)
+                settings.set_property("gtk-theme-name", "Adwaita")
             _apply_launcher_css()
             entries = _discover_apps(self.appimages_dir, self.applications_dir)
             self._win = AppImageGridLauncher(self, entries)
