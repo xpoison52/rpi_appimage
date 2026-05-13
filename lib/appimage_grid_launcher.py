@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Fullscreen grid launcher for AppImage files on Wayland/X11 (GTK3).
-Scans ~/AppImages and optional *.desktop in ~/.local/share/applications
-whose Exec line points to an AppImage path.
+Scans ~/AppImages for *.appimage (any case) and optional *.desktop in
+~/.local/share/applications whose Exec line points to an AppImage path.
 """
 from __future__ import annotations
 
@@ -17,7 +17,100 @@ from typing import Iterable
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gdk, GdkPixbuf, Gio, Gtk  # noqa: E402
+from gi.repository import Gdk, GdkPixbuf, Gio, Gtk, Pango  # noqa: E402
+
+_LAUNCHER_CSS = b"""
+window.app-grid-launcher {
+  background-color: #0c0e12;
+}
+.app-grid-launcher .header-area {
+  background: linear-gradient(180deg, #141820 0%, #0c0e12 100%);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.app-grid-launcher .footer-area {
+  background-color: #0c0e12;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.app-grid-launcher .title-primary {
+  color: #f0f3f8;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.app-grid-launcher .title-secondary {
+  color: rgba(240,243,248,0.45);
+  font-size: 13px;
+  margin-top: 2px;
+}
+.app-grid-launcher .hint-muted {
+  color: rgba(240,243,248,0.38);
+  font-size: 12px;
+}
+.app-grid-launcher .empty-state {
+  color: rgba(240,243,248,0.5);
+  font-size: 15px;
+  padding: 48px;
+}
+.app-grid-launcher button.refresh-btn {
+  color: #e8ecf4;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-weight: 500;
+  min-height: 36px;
+}
+.app-grid-launcher button.refresh-btn:hover {
+  background: rgba(255,255,255,0.11);
+  border-color: rgba(255,255,255,0.16);
+}
+.app-grid-launcher button.refresh-btn:active {
+  background: rgba(255,255,255,0.05);
+}
+.app-grid-launcher flowbox > flowboxchild > button.app-tile {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 16px;
+  padding: 18px 14px 14px 14px;
+  outline: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  min-width: 132px;
+  min-height: 148px;
+}
+.app-grid-launcher flowbox > flowboxchild > button.app-tile:hover {
+  background: rgba(255,255,255,0.09);
+  border-color: rgba(120,160,255,0.35);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+}
+.app-grid-launcher flowbox > flowboxchild > button.app-tile:active {
+  background: rgba(255,255,255,0.06);
+}
+.app-grid-launcher flowbox > flowboxchild > button.app-tile label {
+  color: #e8ecf4;
+  font-size: 13px;
+  font-weight: 500;
+}
+.app-grid-launcher scrolledwindow {
+  background-color: transparent;
+}
+.app-grid-launcher viewport {
+  background-color: transparent;
+}
+.app-grid-launcher flowbox {
+  background-color: transparent;
+}
+"""
+
+
+def _apply_launcher_css() -> None:
+    screen = Gdk.Screen.get_default()
+    if screen is None:
+        return
+    provider = Gtk.CssProvider()
+    provider.load_from_data(_LAUNCHER_CSS)
+    Gtk.StyleContext.add_provider_for_screen(
+        screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+    )
 
 
 def _home() -> Path:
@@ -67,14 +160,17 @@ def _discover_apps(appimages_dir: Path, applications_dir: Path) -> list[dict]:
     apps: dict[str, dict] = {}
 
     if appimages_dir.is_dir():
-        for p in sorted(appimages_dir.glob("*.AppImage")):
-            if os.access(p, os.X_OK) and p.is_file():
-                key = str(p.resolve())
-                apps[key] = {
-                    "name": p.stem.replace("-", " ").replace("_", " "),
-                    "path": p,
-                    "icon_name": "application-x-executable",
-                }
+        for p in sorted(appimages_dir.iterdir()):
+            if not p.is_file() or p.suffix.lower() != ".appimage":
+                continue
+            if not os.access(p, os.X_OK):
+                continue
+            key = str(p.resolve())
+            apps[key] = {
+                "name": p.stem.replace("-", " ").replace("_", " "),
+                "path": p,
+                "icon_name": "application-x-executable",
+            }
 
     if applications_dir.is_dir():
         for desktop in sorted(applications_dir.glob("*.desktop")):
@@ -115,86 +211,141 @@ def _load_icon(icon_name: str, size: int) -> Gtk.Image:
 
 class AppImageGridLauncher(Gtk.ApplicationWindow):
     def __init__(self, app: "GridLauncherApp", entries: list[dict]) -> None:
-        super().__init__(application=app, title="AppImage")
+        super().__init__(application=app, title="")
         self._launcher = app
-        self.set_default_size(1024, 600)
         self.cols = max(1, app.cols)
+        self.set_default_size(1024, 600)
+        self.set_decorated(False)
+        self.set_title("")
+        self.get_style_context().add_class("app-grid-launcher")
 
-        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        outer.set_margin_top(12)
-        outer.set_margin_bottom(12)
-        outer.set_margin_start(12)
-        outer.set_margin_end(12)
+        root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        root.set_name("launcher-root")
 
-        title = Gtk.Label(label="Applications")
-        title.set_markup("<span size='x-large' weight='bold'>Applications</span>")
-        outer.pack_start(title, False, False, 0)
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
+        header.set_margin_top(20)
+        header.set_margin_bottom(18)
+        header.set_margin_start(28)
+        header.set_margin_end(28)
+        header.get_style_context().add_class("header-area")
+
+        titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        title_primary = Gtk.Label(xalign=0)
+        title_primary.set_text("Apps")
+        title_primary.get_style_context().add_class("title-primary")
+        title_secondary = Gtk.Label(xalign=0)
+        title_secondary.set_text("Choose an application to launch")
+        title_secondary.get_style_context().add_class("title-secondary")
+        titles.pack_start(title_primary, False, False, 0)
+        titles.pack_start(title_secondary, False, False, 0)
+
+        refresh = Gtk.Button.new_with_label("Refresh")
+        refresh.set_relief(Gtk.ReliefStyle.NONE)
+        refresh.get_style_context().add_class("refresh-btn")
+        refresh.connect("clicked", lambda *_: self.refresh_grid())
+
+        header.pack_start(titles, True, True, 0)
+        header.pack_end(refresh, False, False, 0)
+
+        self._stack = Gtk.Stack()
+        self._stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self._stack.set_transition_duration(200)
+
+        empty_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        empty_box.set_valign(Gtk.Align.CENTER)
+        empty_box.set_vexpand(True)
+        empty_lbl = Gtk.Label(label="No AppImages found.\nPut .AppImage files in your AppImages folder, make them executable,\nthen press Refresh.")
+        empty_lbl.set_justify(Gtk.Justification.CENTER)
+        empty_lbl.set_line_spacing(6)
+        empty_lbl.get_style_context().add_class("empty-state")
+        empty_box.pack_start(empty_lbl, True, True, 0)
+        self._stack.add_named(empty_box, "empty")
 
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scrolled.set_hexpand(True)
         scrolled.set_vexpand(True)
+        scrolled.set_margin_start(24)
+        scrolled.set_margin_end(24)
+        scrolled.set_margin_top(4)
+        scrolled.set_margin_bottom(8)
 
-        self.grid = Gtk.Grid()
-        self.grid.set_row_spacing(12)
-        self.grid.set_column_spacing(12)
-        self.grid.set_column_homogeneous(True)
-        self.grid.set_row_homogeneous(False)
+        self.flow = Gtk.FlowBox()
+        self.flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.flow.set_activate_on_single_click(True)
+        self.flow.set_homogeneous(True)
+        self.flow.set_max_children_per_line(self.cols)
+        self.flow.set_min_children_per_line(1)
+        self.flow.set_row_spacing(16)
+        self.flow.set_column_spacing(16)
+        self.flow.set_valign(Gtk.Align.START)
 
-        scrolled.add(self.grid)
-        outer.pack_start(scrolled, True, True, 0)
+        scrolled.add(self.flow)
+        self._stack.add_named(scrolled, "grid")
 
-        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        refresh = Gtk.Button.new_with_label("Refresh")
-        refresh.connect("clicked", lambda *_: self.refresh_grid())
-        bar.pack_start(refresh, False, False, 0)
-        hint = Gtk.Label(label="F5 refresh · Ctrl+Shift+Q quit launcher")
-        hint.set_halign(Gtk.Align.END)
+        footer = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        footer.set_margin_top(12)
+        footer.set_margin_bottom(18)
+        footer.set_margin_start(28)
+        footer.set_margin_end(28)
+        footer.get_style_context().add_class("footer-area")
+        hint = Gtk.Label(label="F5 refresh   ·   Ctrl+Shift+Q exit launcher")
+        hint.set_halign(Gtk.Align.CENTER)
         hint.set_hexpand(True)
-        bar.pack_start(hint, True, True, 0)
-        outer.pack_start(bar, False, False, 0)
+        hint.get_style_context().add_class("hint-muted")
+        footer.pack_start(hint, True, True, 0)
 
-        self.add(outer)
+        root.pack_start(header, False, False, 0)
+        root.pack_start(self._stack, True, True, 0)
+        root.pack_start(footer, False, False, 0)
+
+        self.add(root)
         self._fill_grid(entries)
         self.connect("key-press-event", self._on_key_press)
-        # Kiosk: ignore WM close; use Ctrl+Shift+Q to exit launcher
         self.connect("delete-event", lambda *_a: True)
+        self._map_handler = self.connect("map", self._on_first_map)
 
-    def _clear_grid(self) -> None:
-        for child in self.grid.get_children():
-            self.grid.remove(child)
+    def _on_first_map(self, *_args: object) -> None:
+        self.fullscreen()
+        self.disconnect(self._map_handler)
+
+    def _clear_flow(self) -> None:
+        for child in self.flow.get_children():
+            self.flow.remove(child)
             child.destroy()
 
     def _fill_grid(self, entries: list[dict]) -> None:
-        icon_size = 72
-        row, col = 0, 0
+        self._clear_flow()
+        if not entries:
+            self._stack.set_visible_child_name("empty")
+            return
+        self._stack.set_visible_child_name("grid")
+        icon_size = 88
         for ent in entries:
             btn = Gtk.Button()
             btn.set_relief(Gtk.ReliefStyle.NONE)
-            vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-            vbox.set_margin_top(8)
-            vbox.set_margin_bottom(8)
-            vbox.set_margin_start(8)
-            vbox.set_margin_end(8)
+            btn.get_style_context().add_class("app-tile")
+            vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            vbox.set_halign(Gtk.Align.CENTER)
             img = _load_icon(ent["icon_name"], icon_size)
-            vbox.pack_start(img, False, False, 0)
+            img.set_halign(Gtk.Align.CENTER)
             lbl = Gtk.Label(label=ent["name"])
-            lbl.set_line_wrap(True)
-            lbl.set_max_width_chars(16)
             lbl.set_justify(Gtk.Justification.CENTER)
+            lbl.set_line_wrap(True)
+            lbl.set_max_width_chars(14)
+            lbl.set_ellipsize(Pango.EllipsizeMode.END)
+            lbl.set_lines(2)
+            lbl.set_halign(Gtk.Align.CENTER)
+            vbox.pack_start(img, False, False, 0)
             vbox.pack_start(lbl, False, False, 0)
             btn.add(vbox)
             path = ent["path"]
             btn.connect("clicked", self._on_launch, path)
-            self.grid.attach(btn, col, row, 1, 1)
-            col += 1
-            if col >= self.cols:
-                col = 0
-                row += 1
+            self.flow.add(btn)
+        self.flow.show_all()
 
     def refresh_grid(self) -> None:
         entries = _discover_apps(self._launcher.appimages_dir, self._launcher.applications_dir)
-        self._clear_grid()
         self._fill_grid(entries)
 
     def _on_key_press(self, _widget: Gtk.Widget, event: Gdk.EventKey) -> bool:
@@ -234,6 +385,10 @@ class GridLauncherApp(Gtk.Application):
 
     def do_activate(self) -> None:
         if self._win is None:
+            settings = Gtk.Settings.get_default()
+            if settings is not None:
+                settings.set_property("gtk-application-prefer-dark-theme", True)
+            _apply_launcher_css()
             entries = _discover_apps(self.appimages_dir, self.applications_dir)
             self._win = AppImageGridLauncher(self, entries)
             self._win.connect("destroy", self._on_window_destroy)
